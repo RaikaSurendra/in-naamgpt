@@ -8,62 +8,36 @@ function formatNumber(n) {
   return String(n)
 }
 
-function getDateRange(period) {
-  const now = new Date()
-  const fmt = (d) => d.toISOString().split('T')[0]
-
-  if (period === 'today') {
-    return { start: fmt(now), end: fmt(now) }
-  }
-  if (period === 'month') {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1)
-    return { start: fmt(start), end: fmt(now) }
-  }
-  return null
+function parseCount(str) {
+  if (!str) return 0
+  const n = parseInt(String(str).replace(/,/g, ''), 10)
+  return Number.isNaN(n) ? 0 : n
 }
 
 export default function VisitorStats() {
-  const [stats, setStats] = useState({ today: null, month: null, total: null })
-  const [error, setError] = useState(false)
+  const [stats, setStats] = useState({ today: 0, month: 0, total: 0 })
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     async function fetchStats() {
       try {
-        const todayRange = getDateRange('today')
-        const monthRange = getDateRange('month')
-
-        const [todayRes, monthRes, totalRes] = await Promise.all([
-          fetch(`${API_BASE}/counter/${encodeURIComponent('/')}.json?start=${todayRange.start}&end=${todayRange.end}&no_events=true`),
-          fetch(`${API_BASE}/counter/${encodeURIComponent('/')}.json?start=${monthRange.start}&end=${monthRange.end}&no_events=true`),
-          fetch(`${API_BASE}/counter/${encodeURIComponent('/')}.json?no_events=true`),
-        ])
-
-        const [todayData, monthData, totalData] = await Promise.all([
-          todayRes.ok ? todayRes.json() : null,
-          monthRes.ok ? monthRes.json() : null,
-          totalRes.ok ? totalRes.json() : null,
-        ])
-
-        setStats({
-          today: todayData?.count ?? null,
-          month: monthData?.count ?? null,
-          total: totalData?.count ?? null,
-        })
+        const res = await fetch(`${API_BASE}/counter/%2F.json`)
+        if (!res.ok) return
+        const contentType = res.headers.get('content-type') || ''
+        if (!contentType.includes('json')) return
+        const data = await res.json()
+        const total = parseCount(data.count) || parseCount(data.count_unique) || 0
+        setStats({ today: 0, month: 0, total })
+        setLoaded(true)
       } catch {
-        setError(true)
+        // API not available — keep component hidden
       }
     }
 
     fetchStats()
   }, [])
 
-  if (error || (stats.today === null && stats.month === null && stats.total === null)) {
-    return null
-  }
-
   const counters = [
-    { label: 'Today', value: stats.today, color: '#D02020' },
-    { label: 'This Month', value: stats.month, color: '#1040C0' },
     { label: 'All Time', value: stats.total, color: '#F0C020' },
   ]
 
@@ -72,23 +46,36 @@ export default function VisitorStats() {
       <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">
         Visitors
       </span>
-      {counters.map((c) => (
-        <div key={c.label} className="flex items-center gap-2">
-          <div
-            className="w-2 h-2"
-            style={{ backgroundColor: c.color }}
-          />
-          <span className="text-white/50 text-xs">
-            {c.label}
-          </span>
-          <span
-            className="text-xs font-bold"
-            style={{ color: c.color }}
-          >
-            {c.value !== null ? formatNumber(c.value) : '—'}
-          </span>
-        </div>
-      ))}
+      {loaded ? (
+        counters.map((c) => (
+          <div key={c.label} className="flex items-center gap-2">
+            <div
+              className="w-2 h-2"
+              style={{ backgroundColor: c.color }}
+            />
+            <span className="text-white/50 text-xs">
+              {c.label}
+            </span>
+            <span
+              className="text-xs font-bold"
+              style={{ color: c.color }}
+            >
+              {formatNumber(c.value)}
+            </span>
+          </div>
+        ))
+      ) : (
+        <span className="text-white/30 text-xs">loading...</span>
+      )}
+      <a
+        href={`${API_BASE}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-white/20 text-[10px] hover:text-white/40 transition-colors"
+        title="View analytics dashboard"
+      >
+        dashboard ↗
+      </a>
     </div>
   )
 }
